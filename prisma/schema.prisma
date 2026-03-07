@@ -1,0 +1,115 @@
+// Diagrama de clases: Usuario, Producto, Carrito, Pedido, Pago, Inventario
+// https://plantuml.com - bases_qinspecting/diagrama-clases.puml
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// Usuario "1" -- "1" Carrito : tiene
+// Usuario "1" -- "*" Pedido : realiza
+model Usuario {
+  id           Int      @id @default(autoincrement())
+  nombre       String
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  rol          String   @default("usuario") // usuario | admin
+
+  carrito Carrito?
+  pedidos Pedido[]
+
+  @@map("usuarios")
+}
+
+// Carrito "*" -- "*" Producto : contiene (vía CarritoItem)
+model Carrito {
+  id        Int   @id @default(autoincrement())
+  usuarioId Int   @unique @map("usuario_id")
+  usuario   Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  items CarritoItem[]
+
+  @@map("carritos")
+}
+
+model CarritoItem {
+  id         Int @id @default(autoincrement())
+  carritoId  Int @map("carrito_id")
+  productoId Int @map("producto_id")
+  cantidad   Int
+
+  carrito  Carrito  @relation(fields: [carritoId], references: [id], onDelete: Cascade)
+  producto Producto @relation(fields: [productoId], references: [id], onDelete: Cascade)
+
+  @@unique([carritoId, productoId])
+  @@map("carrito_items")
+}
+
+// Producto "1" -- "*" Inventario : registrado en (1:1 por producto)
+model Producto {
+  id     Int    @id @default(autoincrement())
+  nombre String
+  precio Decimal @db.Decimal(10, 2)
+  talla  String  @default("")
+  color  String  @default("")
+  marca  String  @default("")
+  stock  Int     @default(0)
+
+  carritoItems CarritoItem[]
+  inventario   Inventario?
+  pedidoItems PedidoItem[]
+
+  @@map("productos")
+}
+
+model Inventario {
+  productoId Int @id @map("producto_id")
+  cantidad   Int
+
+  producto Producto @relation(fields: [productoId], references: [id], onDelete: Cascade)
+
+  @@map("inventario")
+}
+
+// Pedido "1" -- "1" Pago : tiene
+model Pedido {
+  id        Int      @id @default(autoincrement())
+  usuarioId Int      @map("usuario_id")
+  total     Decimal  @db.Decimal(10, 2)
+  estado    String   // pendiente_pago | confirmado | pago_rechazado
+
+  usuario Usuario     @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  pago   Pago?
+  items  PedidoItem[]
+
+  @@map("pedidos")
+}
+
+model PedidoItem {
+  id         Int     @id @default(autoincrement())
+  pedidoId   Int     @map("pedido_id")
+  productoId Int     @map("producto_id")
+  cantidad   Int
+  precio     Decimal @db.Decimal(10, 2)
+
+  pedido   Pedido   @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  producto Producto @relation(fields: [productoId], references: [id], onDelete: Restrict)
+
+  @@map("pedido_items")
+}
+
+model Pago {
+  id        Int    @id @default(autoincrement())
+  pedidoId  Int    @unique @map("pedido_id")
+  metodo    String
+  estado    String // aprobado | rechazado
+
+  pedido Pedido @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+
+  @@map("pagos")
+}
