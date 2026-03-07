@@ -52,13 +52,14 @@ model CarritoItem {
 
 // Producto "1" -- "*" Inventario : registrado en (1:1 por producto)
 model Producto {
-  id     Int    @id @default(autoincrement())
-  nombre String
-  precio Decimal @db.Decimal(10, 2)
-  talla  String  @default("")
-  color  String  @default("")
-  marca  String  @default("")
-  stock  Int     @default(0)
+  id        Int     @id @default(autoincrement())
+  nombre    String
+  precio    Decimal @db.Decimal(10, 2)
+  talla     String  @default("")
+  color     String  @default("")
+  marca     String  @default("")
+  stock     Int     @default(0)
+  imagenUrl String? @map("imagen_url")
 
   carritoItems CarritoItem[]
   inventario   Inventario?

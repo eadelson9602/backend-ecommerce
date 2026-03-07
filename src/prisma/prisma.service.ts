@@ -1,29 +1,23 @@
 import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
+import { PrismaClient } from '@prisma/client';
 
 @Injectable()
 export class PrismaService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PrismaService.name);
-  private client: import('@prisma/client').PrismaClient | null = null;
+  private client: PrismaClient | null = null;
 
-  get prisma(): import('@prisma/client').PrismaClient {
+  get prisma(): PrismaClient {
     if (!this.client) {
-      try {
-        const { PrismaClient } = require('@prisma/client');
-        this.client = new PrismaClient();
-      } catch {
-        throw new Error(
-          'Cliente Prisma no generado. Ejecuta en la raíz del proyecto: npx prisma generate',
-        );
-      }
+      this.client = new PrismaClient();
     }
     return this.client;
   }
 
   async onModuleInit(): Promise<void> {
     try {
-      const { PrismaClient } = require('@prisma/client');
-      this.client = new PrismaClient();
-      await this.client.$connect();
+      const client = new PrismaClient();
+      await client.$connect();
+      this.client = client;
       this.logger.log('Prisma conectado');
     } catch {
       this.logger.warn(

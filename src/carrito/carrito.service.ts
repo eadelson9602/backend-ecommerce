@@ -1,9 +1,23 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { StoreService, Carrito, CarritoItem, Usuario } from '../store/store.service';
+import { ProductosService } from '../productos/productos.service';
 
 @Injectable()
 export class CarritoService {
-  constructor(private readonly store: StoreService) {}
+  constructor(
+    private readonly store: StoreService,
+    private readonly productosService: ProductosService,
+  ) {}
+
+  /** Enriquecer items con producto desde base de datos (precio actual en COP) */
+  private async itemsConProductos(items: CarritoItem[]) {
+    return Promise.all(
+      items.map(async (i) => {
+        const producto = await this.productosService.getById(String(i.productoId));
+        return { ...i, producto: producto ?? undefined };
+      }),
+    );
+  }
 
   getOrCreateCarrito(usuarioId: number): Carrito {
     const existente = [...this.store.carritos.values()].find((c) => c.usuarioId === usuarioId);
@@ -16,12 +30,11 @@ export class CarritoService {
     return carrito;
   }
 
-  /** UC5 - Agregar al carrito */
-  agregar(user: Usuario, productoId: number, cantidad: number) {
-    const prod = this.store.productos.get(String(productoId));
+  /** UC5 - Agregar al carrito (valida producto y stock desde BD, precios en COP) */
+  async agregar(user: Usuario, productoId: number, cantidad: number) {
+    const prod = await this.productosService.getById(String(productoId));
     if (!prod) throw new NotFoundException('Producto no encontrado.');
-    const inv = this.store.inventario.get(String(productoId));
-    const disponible = inv?.cantidad ?? 0;
+    const disponible = prod.stock ?? prod.cantidad ?? 0;
     if (disponible < cantidad) {
       throw new BadRequestException({ error: 'Stock insuficiente.', disponible });
     }
@@ -38,28 +51,18 @@ export class CarritoService {
       items.push({ productoId, cantidad: qty });
     }
     this.store.carritoItems.set(String(carrito.id), items);
-    return {
-      carritoId: carrito.id,
-      items: items.map((i) => ({
-        ...i,
-        producto: this.store.productos.get(String(i.productoId)),
-      })),
-    };
+    const itemsConProducto = await this.itemsConProductos(items);
+    return { carritoId: carrito.id, items: itemsConProducto };
   }
 
-  getCarrito(user: Usuario) {
+  async getCarrito(user: Usuario) {
     const carrito = this.getOrCreateCarrito(user.id);
     const items = this.store.carritoItems.get(String(carrito.id)) ?? [];
-    return {
-      carrito,
-      items: items.map((i) => ({
-        ...i,
-        producto: this.store.productos.get(String(i.productoId)),
-      })),
-    };
+    const itemsConProducto = await this.itemsConProductos(items);
+    return { carrito, items: itemsConProducto };
   }
 
-  actualizarItem(user: Usuario, productoId: number, cantidad: number) {
+  async actualizarItem(user: Usuario, productoId: number, cantidad: number) {
     const carrito = this.getOrCreateCarrito(user.id);
     const items = this.store.carritoItems.get(String(carrito.id)) ?? [];
     const idx = items.findIndex((i) => i.productoId === productoId);
@@ -70,6 +73,7 @@ export class CarritoService {
       items[idx].cantidad = cantidad;
     }
     this.store.carritoItems.set(String(carrito.id), items);
-    return { items };
+    const itemsConProducto = await this.itemsConProductos(items);
+    return { items: itemsConProducto };
   }
 }

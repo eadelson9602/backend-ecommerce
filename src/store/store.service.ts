@@ -77,7 +77,11 @@ export class StoreService {
 
   async seed(): Promise<void> {
     if (this.usuarios.size > 0) return;
+
+    // --- Usuarios: admin y clientes de ejemplo ---
     const adminHash = await bcrypt.hash('admin123', 10);
+    const userHash = await bcrypt.hash('user123', 10);
+
     this.usuarios.set('1', {
       id: 1,
       nombre: 'Administrador',
@@ -85,17 +89,46 @@ export class StoreService {
       passwordHash: adminHash,
       rol: 'admin',
     });
-    this.idSeq.usuario = 2;
+    this.usuarios.set('2', {
+      id: 2,
+      nombre: 'María García',
+      email: 'maria@example.com',
+      passwordHash: userHash,
+      rol: 'usuario',
+    });
+    this.usuarios.set('3', {
+      id: 3,
+      nombre: 'Carlos López',
+      email: 'carlos@example.com',
+      passwordHash: userHash,
+      rol: 'usuario',
+    });
+    this.idSeq.usuario = 4;
+
+    // --- Productos de ejemplo (tienda de zapatos, precios en COP) ---
     const productosIniciales: Omit<Producto, 'id'>[] = [
-      { nombre: 'Camiseta', precio: 19.99, talla: 'M', color: 'Negro', marca: 'MarcaX', stock: 50 },
-      { nombre: 'Pantalón', precio: 39.99, talla: 'L', color: 'Azul', marca: 'MarcaY', stock: 30 },
-      { nombre: 'Zapatillas', precio: 59.99, talla: '42', color: 'Blanco', marca: 'MarcaZ', stock: 20 },
+      { nombre: 'Zapatilla Running Pro', precio: 405000, talla: '40', color: 'Negro', marca: 'SportMax', stock: 45 },
+      { nombre: 'Zapatilla Running Pro', precio: 405000, talla: '42', color: 'Negro', marca: 'SportMax', stock: 38 },
+      { nombre: 'Zapatilla Running Pro', precio: 405000, talla: '44', color: 'Blanco', marca: 'SportMax', stock: 25 },
+      { nombre: 'Bota Casual Cuero', precio: 585000, talla: '39', color: 'Marrón', marca: 'UrbanStep', stock: 20 },
+      { nombre: 'Bota Casual Cuero', precio: 585000, talla: '41', color: 'Negro', marca: 'UrbanStep', stock: 30 },
+      { nombre: 'Sandalia Playa', precio: 157500, talla: '38', color: 'Azul', marca: 'BeachWear', stock: 60 },
+      { nombre: 'Sandalia Playa', precio: 157500, talla: '40', color: 'Blanco', marca: 'BeachWear', stock: 55 },
+      { nombre: 'Mocasín Clásico', precio: 360000, talla: '40', color: 'Negro', marca: 'ClassicFoot', stock: 22 },
+      { nombre: 'Mocasín Clásico', precio: 360000, talla: '42', color: 'Granate', marca: 'ClassicFoot', stock: 18 },
+      { nombre: 'Zapato Formal Oxford', precio: 720000, talla: '41', color: 'Negro', marca: 'Elegance', stock: 15 },
+      { nombre: 'Zapato Formal Oxford', precio: 720000, talla: '43', color: 'Negro', marca: 'Elegance', stock: 12 },
+      { nombre: 'Deportiva Urbana', precio: 297000, talla: '39', color: 'Gris', marca: 'StreetStyle', stock: 40 },
+      { nombre: 'Deportiva Urbana', precio: 297000, talla: '42', color: 'Blanco', marca: 'StreetStyle', stock: 35 },
+      { nombre: 'Chancla Unisex', precio: 90000, talla: '40', color: 'Negro', marca: 'Basic', stock: 100 },
+      { nombre: 'Chancla Unisex', precio: 90000, talla: '42', color: 'Azul', marca: 'Basic', stock: 80 },
     ];
+
     productosIniciales.forEach((p, i) => {
       const id = i + 1;
       this.productos.set(String(id), { id, ...p });
       this.inventario.set(String(id), { productoId: id, cantidad: p.stock });
     });
-    this.idSeq.producto = 4;
+    this.idSeq.producto = productosIniciales.length + 1;
   }
 }

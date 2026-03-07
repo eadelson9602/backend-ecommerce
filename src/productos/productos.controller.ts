@@ -23,13 +23,13 @@ import { Roles } from '../auth/decorators/roles.decorator';
 export class ProductosController {
   constructor(private readonly productosService: ProductosService) {}
 
-  /** UC3 - Ver catálogo (público) */
+  /** UC3 - Ver catálogo (público) - datos desde base de datos */
   @Get()
   getCatalogo() {
     return this.productosService.getCatalogo();
   }
 
-  /** UC4 - Filtrar productos (público) */
+  /** UC4 - Filtrar productos (público) - datos desde base de datos */
   @Get('filtrar')
   filtrar(
     @Query('nombre') nombre?: string,
@@ -59,7 +59,7 @@ export class ProductosController {
   @Post('admin')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
-  create(@Body() body: { nombre: string; precio: number; talla?: string; color?: string; marca?: string; stock?: number }) {
+  create(@Body() body: { nombre: string; precio: number; talla?: string; color?: string; marca?: string; stock?: number; imagenUrl?: string | null }) {
     if (!body.nombre || body.precio == null) {
       throw new BadRequestException('Nombre y precio son obligatorios.');
     }
@@ -69,7 +69,7 @@ export class ProductosController {
   @Put('admin/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
-  update(@Param('id') id: string, @Body() body: Partial<{ nombre: string; precio: number; talla: string; color: string; marca: string; stock: number }>) {
+  update(@Param('id') id: string, @Body() body: Partial<{ nombre: string; precio: number; talla: string; color: string; marca: string; stock: number; imagenUrl?: string | null }>) {
     return this.productosService.update(id, body);
   }
 
@@ -90,8 +90,8 @@ export class ProductosController {
   }
 
   @Get(':id')
-  getById(@Param('id') id: string) {
-    const p = this.productosService.getById(id);
+  async getById(@Param('id') id: string) {
+    const p = await this.productosService.getById(id);
     if (!p) throw new NotFoundException('Producto no encontrado.');
     return p;
   }
