@@ -1,205 +1,325 @@
 # Backend E-commerce
 
-API REST de un sistema de comercio (tienda) construida con **NestJS**, **Prisma** y **PostgreSQL** (Supabase). Implementa los casos de uso de usuario, administrador y sistema de pago definidos en el diagrama de casos de uso del proyecto.
+API REST de una tienda online construida con **NestJS**, **Prisma** y **PostgreSQL** (Supabase). Incluye autenticación JWT, catálogo de productos, carrito, pedidos y pago con **Mercado Pago (Checkout Pro)**.
 
-## Descripción del proyecto
+---
 
-Sistema backend para una tienda online que permite:
+## ¿Qué hace este proyecto?
 
-- **Usuarios:** registrarse, iniciar sesión, ver y filtrar catálogo, agregar al carrito, realizar compra y ver historial de pedidos.
-- **Administradores:** gestionar productos, gestionar inventario y ver todos los pedidos.
-- **Sistema de pago:** procesamiento de pago (integrado en el flujo de checkout).
+Backend de un e-commerce que permite:
 
-El modelo de datos sigue el diagrama de clases (Usuario, Producto, Carrito, Pedido, Pago, Inventario). La persistencia puede usar **Prisma + PostgreSQL** (Supabase) o, sin base de datos configurada, un **Store en memoria** para desarrollo.
+- **Usuarios:** registrarse, iniciar sesión, ver y filtrar catálogo, gestionar carrito, iniciar checkout con Mercado Pago y ver historial de pedidos.
+- **Administradores:** CRUD de productos, gestión de inventario y listado de todos los pedidos.
+- **Pagos:** integración con **Mercado Pago Checkout Pro**: se crea una preferencia, el usuario es redirigido a Mercado Pago para pagar y, al volver (o vía webhook), se confirma el pedido.
+
+El modelo de datos incluye: **Usuario**, **Producto**, **Carrito** / **CarritoItem**, **Pedido** / **PedidoItem**, **Pago**, **Inventario**. La persistencia usa **Prisma + PostgreSQL** (p. ej. Supabase). Sin `DATABASE_URL` configurada, la app puede arrancar con un **Store en memoria** (fallback para desarrollo).
+
+---
 
 ## Stack tecnológico
 
-| Tecnología        | Uso                          |
-|-------------------|------------------------------|
-| **NestJS**        | Framework backend (Node.js)   |
-| **TypeScript**    | Lenguaje                     |
-| **Prisma**        | ORM y migraciones (PostgreSQL)|
-| **PostgreSQL**    | Base de datos (Supabase)      |
-| **Passport + JWT**| Autenticación                |
-| **bcryptjs**      | Hash de contraseñas           |
+| Tecnología        | Uso                              |
+|-------------------|----------------------------------|
+| **NestJS**        | Framework backend (Node.js)      |
+| **TypeScript**    | Lenguaje                         |
+| **Prisma**        | ORM y migraciones (PostgreSQL)   |
+| **PostgreSQL**    | Base de datos (Supabase)         |
+| **Passport + JWT**| Autenticación                    |
+| **bcryptjs**      | Hash de contraseñas              |
+| **Mercado Pago**  | Pagos (Checkout Pro, SDK Node)   |
 
-## Arquitectura
+---
+
+## Arquitectura del código
 
 ```
 src/
-├── main.ts                 # Entrada, CORS, seed del Store
-├── app.module.ts          # Módulo raíz
-├── prisma/                # Cliente Prisma y conexión a PostgreSQL
-├── store/                 # Almacén en memoria (fallback sin DB)
-├── auth/                  # Registro, login, JWT, guards, roles (usuario/admin)
-├── productos/             # Catálogo, filtros, CRUD e inventario (admin)
-├── carrito/               # Carrito por usuario (agregar, ver, actualizar)
-├── pedidos/               # Checkout, historial, listado admin
-└── pago/                  # Servicio de procesamiento de pago (simulado)
+├── main.ts                    # Entrada, CORS
+├── app.module.ts              # Módulo raíz
+├── prisma/                    # Cliente Prisma (PostgreSQL)
+├── store/                      # Store en memoria (fallback sin DB)
+├── auth/                      # Registro, login, JWT, guards, roles (usuario | admin)
+├── productos/                  # Catálogo, filtros, CRUD e inventario (admin)
+├── carrito/                    # Carrito por usuario (agregar, ver, actualizar ítems)
+├── pedidos/                    # Checkout simulado, Checkout Pro (preferencia + webhook), historial, admin
+├── pago/                       # Detalle de pago MP (para página failure) y webhook alternativo
+└── mercadopago/                # Servicio Mercado Pago: preferencias, pagos, errores
 ```
 
-- **Prisma:** conexión a la base de datos; si no está disponible, la app arranca igual y usa el Store en memoria.
-- **Store:** datos en memoria con seed (admin + productos de ejemplo) para poder probar sin configurar DB.
-- **Guards:** rutas protegidas con JWT; algunas solo para rol `admin`.
+- **Prisma:** conexión a la base de datos; si no está disponible, la app puede usar el Store en memoria.
+- **Guards:** rutas protegidas con JWT; varias solo para rol `admin`.
+- **Checkout Pro:** el frontend llama `POST /api/pedidos/create-preference` → el backend crea pedido + preferencia MP → devuelve `initPoint` → el usuario es redirigido a Mercado Pago. Tras el pago, MP redirige a success/failure/pending o notifica al webhook para confirmar el pedido.
+
+### Estilo arquitectónico: en capas y modular
+
+Este proyecto está construido con una **arquitectura en capas** y **modular** porque permite separar responsabilidades sin añadir complejidad innecesaria y se alinea con la forma en que NestJS organiza las aplicaciones.
+
+**Arquitectura en capas**
+
+El flujo de una petición sigue tres capas bien definidas:
+
+1. **Capa de presentación (entrada):** los **controladores** reciben las peticiones HTTP, extraen body/query/params y delegan en los servicios. No contienen lógica de negocio.
+2. **Capa de lógica de negocio (aplicación):** los **servicios** orquestan las operaciones, validan reglas (stock, carrito vacío, permisos) y coordinan persistencia e integraciones. Aquí vive la lógica del dominio (crear pedido, preferencia de pago, confirmar pago, etc.).
+3. **Capa de datos e infraestructura:** el acceso a la base de datos se hace mediante **Prisma** (inyectado como `PrismaService`), y las integraciones externas (Mercado Pago) se encapsulan en **servicios de infraestructura** (`MercadoPagoService`) que los demás servicios usan por inyección. No existe una capa de “repositorios” separada: los servicios llaman al ORM directamente, lo que simplifica el código en un proyecto de este tamaño.
+
+Así se consigue una separación clara entre “quién recibe la petición”, “quién decide qué hacer” y “quién persiste o llama a terceros”, sin añadir capas adicionales (por ejemplo, repositorios o casos de uso) que en este contexto no aportan aún.
+
+**Arquitectura modular**
+
+El backend está dividido por **módulos por funcionalidad** (auth, productos, carrito, pedidos, pago, mercadopago, prisma). Cada módulo agrupa su controlador y sus servicios, y expone solo lo que otros módulos necesitan (por ejemplo, `ProductosService` se exporta para que Carrito y Pedidos lo usen). Las dependencias entre módulos se resuelven por **inyección de dependencias**: por ejemplo, `PedidosService` recibe `PrismaService`, `MercadoPagoService` y `ProductosService` en el constructor.
+
+Esta organización modular facilita localizar dónde está cada caso de uso (auth en auth, carrito en carrito, checkout en pedidos), favorece el mantenimiento y permite crecer o refactorizar un módulo con menor impacto en el resto. No se ha aplicado arquitectura hexagonal (puertos/adaptadores) ni Clean Architecture (dominio aislado, casos de uso explícitos) de forma estricta; el objetivo ha sido un equilibrio entre claridad, mantenibilidad y simplicidad adecuado al alcance del proyecto.
+
+---
 
 ## Requisitos previos
 
 - **Node.js** 18+ (recomendado 20+)
-- **npm** o **yarn**
-- (Opcional) Cuenta en **Supabase** para PostgreSQL en la nube
+- **Yarn** o npm
+- (Opcional) Cuenta **Supabase** para PostgreSQL
+- (Opcional) Cuenta **Mercado Pago** para pagos reales
 
-## Pasos para levantar el proyecto
+---
 
-### 1. Clonar e instalar dependencias
+## Variables de entorno
 
-```bash
-cd backend-ecommerce
-yarn install
-# o: npm install
-```
-
-### 2. Variables de entorno
-
-Copia el ejemplo y ajusta los valores:
+Copia el ejemplo y ajusta:
 
 ```bash
 cp .env.example .env
 ```
 
-Edita `.env` y configura al menos:
+| Variable | Obligatorio | Descripción |
+|----------|-------------|-------------|
+| `PORT` | No | Puerto del servidor (default `3000`) |
+| `JWT_SECRET` | Sí | Clave para firmar tokens JWT |
+| `NODE_ENV` | No | `development` \| `production` |
+| `DATABASE_URL` | Sí* | URL PostgreSQL (pooling, p. ej. Supabase puerto 6543) |
+| `DIRECT_URL` | Sí* | URL PostgreSQL directa para migraciones (puerto 5432) |
+| `MERCADOPAGO_ACCESS_TOKEN` | Sí** | Token de acceso de Mercado Pago |
+| `MERCADOPAGO_FRONTEND_URL` | No | Base del frontend (default `http://localhost:5173`) |
+| `MERCADOPAGO_SUCCESS_URL` | No | URL de éxito (default `{FRONTEND_URL}/checkout/success`) |
+| `MERCADOPAGO_FAILURE_URL` | No | URL de fallo (default `{FRONTEND_URL}/checkout/failure`) |
+| `MERCADOPAGO_PENDING_URL` | No | URL de pendiente (default `{FRONTEND_URL}/checkout/pending`) |
+| `MERCADOPAGO_NOTIFICATION_URL` | No | URL completa del webhook (ej. `https://tu-api.com/api/pedidos/mercadopago-webhook`); MP la llama en GET. En local suele dejarse vacía. |
+| `MERCADOPAGO_TEST_PAYER_EMAIL` | No | En sandbox MP exige email con `@testuser.com`; define uno aquí si hace falta |
 
-- `PORT` – Puerto del servidor (por defecto 3000).
-- `JWT_SECRET` – Clave secreta para firmar los tokens JWT.
-- Si usas **Supabase:** `DATABASE_URL` y `DIRECT_URL` (ver sección [Base de datos y migraciones](#base-de-datos-y-migraciones)).
+\* Sin `DATABASE_URL` la app arranca con Store en memoria.  
+\** Necesario para Checkout Pro; en desarrollo puedes usar token de prueba.
 
-Sin `DATABASE_URL` la aplicación arranca usando el Store en memoria.
+---
 
-### 3. Generar cliente Prisma (si usas base de datos)
+## Comandos
+
+### Instalación y generación de cliente Prisma
 
 ```bash
+yarn install
 yarn prisma generate
-# o: npx prisma generate
 ```
 
-### 4. Aplicar migraciones (solo si usas Supabase/PostgreSQL)
+### Base de datos
+
+| Comando | Descripción |
+|---------|-------------|
+| `yarn db:migrate` | Crea/aplica migraciones en desarrollo (`prisma migrate dev`) |
+| `yarn prisma migrate deploy` | Aplica migraciones pendientes (producción/CI) |
+| `yarn db:studio` | Abre Prisma Studio |
+| `yarn db:push` | Sincroniza schema con la DB sin migraciones (solo desarrollo) |
+| `yarn db:seed` | Ejecuta el seed (usuarios + productos de ejemplo) |
+
+### Servidor
+
+| Comando | Descripción |
+|---------|-------------|
+| `yarn start:dev` | Desarrollo con watch (incluye `prisma generate`) |
+| `yarn start` | Inicia la app (incluye `prisma generate`) |
+| `yarn start:prod` | Ejecuta el build compilado (`node dist/main.js`) |
+| `yarn start:prod:low-memory` | Igual que prod con límite de heap 384 MB (para planes 512 MB, ver [docs/RENDER.md](docs/RENDER.md)) |
+
+### Build y calidad
+
+| Comando | Descripción |
+|---------|-------------|
+| `yarn build` | Genera cliente Prisma y compila Nest (`dist/`) |
+| `yarn lint` | Linter |
+| `yarn format` | Formato con Prettier |
+| `yarn test` | Tests unitarios |
+| `yarn test:e2e` | Tests e2e |
+| `yarn test:cov` | Cobertura |
+
+---
+
+## Pasos para levantar el proyecto
+
+### 1. Instalar dependencias
 
 ```bash
-yarn db:migrate
-# o: npx prisma migrate deploy
+cd backend-ecommerce
+yarn install
 ```
 
-Para crear la base desde cero en desarrollo:
+### 2. Configurar variables de entorno
 
 ```bash
-npx prisma migrate dev --name init
+cp .env.example .env
 ```
 
-### 5. Iniciar el servidor
+Edita `.env` y define al menos `JWT_SECRET` y, si usas base de datos, `DATABASE_URL` y `DIRECT_URL`. Para Mercado Pago, `MERCADOPAGO_ACCESS_TOKEN`.
 
-**Desarrollo (con recarga al cambiar código):**
+### 3. Base de datos (Supabase / PostgreSQL)
 
-```bash
-yarn start:dev
-# o: npm run start:dev
-```
-
-**Producción (compilado):**
-
-```bash
-yarn build
-yarn start:prod
-```
-
-La API quedará disponible en `http://localhost:3000` (o el `PORT` que hayas puesto en `.env`).
-
-### 6. Usuario de prueba (Store en memoria)
-
-Si arrancas sin base de datos, el seed crea un administrador:
-
-- **Email:** `admin@tienda.com`
-- **Contraseña:** `admin123`
-
-## Base de datos y migraciones
-
-### Supabase (PostgreSQL)
-
-El proyecto está preparado para usar **Supabase** con:
-
-- **Connection pooling** (puerto 6543) en `DATABASE_URL` para la aplicación.
-- **Conexión directa** (puerto 5432) en `DIRECT_URL` para las migraciones de Prisma.
-
-En Supabase: **Project Settings → Database → Connection string**. Copia las dos URLs (pooler y directa), sustituye `[YOUR-PASSWORD]` por tu contraseña de base de datos y define en `.env`:
+En Supabase: **Project Settings → Database**. Usa la connection string con pooler (puerto 6543) para `DATABASE_URL` y la directa (5432) para `DIRECT_URL`.
 
 ```env
 DATABASE_URL="postgresql://postgres.PROJECT_REF:TU_PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?pgbouncer=true"
 DIRECT_URL="postgresql://postgres.PROJECT_REF:TU_PASSWORD@aws-0-REGION.pooler.supabase.com:5432/postgres"
 ```
 
-### Comandos Prisma útiles
+### 4. Migraciones y seed
 
-| Comando | Descripción |
-|---------|-------------|
-| `yarn prisma generate` | Genera el cliente Prisma tras cambiar el schema. |
-| `yarn db:migrate` / `npx prisma migrate dev` | Crea o aplica migraciones en desarrollo. |
-| `npx prisma migrate deploy` | Aplica migraciones pendientes (producción o CI). |
-| `yarn db:studio` | Abre Prisma Studio para ver/editar datos. |
-| `yarn db:push` | Sincroniza el schema con la DB sin migraciones (solo desarrollo). |
+```bash
+yarn prisma generate
+yarn db:migrate
+yarn db:seed
+```
 
-### Modelo de datos (Prisma)
+### 5. Iniciar
 
-Entidades principales: **Usuario**, **Producto**, **Carrito**, **CarritoItem**, **Pedido**, **PedidoItem**, **Pago**, **Inventario**. El archivo `prisma/schema.prisma` y las migraciones en `prisma/migrations/` definen tablas y relaciones.
+```bash
+yarn start:dev
+```
 
-## API – Resumen de endpoints
+API en `http://localhost:3000` (o el `PORT` de `.env`).
+
+### 6. Usuarios de prueba (tras ejecutar el seed)
+
+Después de `yarn db:seed`, puedes iniciar sesión en la aplicación (frontend o con `POST /api/auth/login`) con estos usuarios:
+
+| Rol     | Email              | Contraseña | Uso |
+|---------|--------------------|------------|-----|
+| Admin   | `admin@tienda.com` | `admin123` | Acceso al panel de administración (productos, pedidos, usuarios). |
+| Usuario | `maria@example.com`| `user123`  | Compras, carrito, checkout, historial de pedidos. |
+| Usuario | `carlos@example.com` | `user123` | Mismo que María; útil para probar con otra cuenta. |
+
+Todos pueden probar el catálogo, carrito y checkout con Mercado Pago usando cualquiera de estas cuentas.
+
+---
+
+## Migraciones
+
+Las migraciones están en `prisma/migrations/`. Cada carpeta contiene un `migration.sql`.
+
+- **Desarrollo:** `yarn db:migrate` (crea migraciones con `prisma migrate dev`).
+- **Producción:** `yarn prisma migrate deploy` (solo aplica; no crea nuevas).
+
+Después de cambiar `prisma/schema.prisma`:
+
+```bash
+yarn prisma migrate dev --name descripcion_cambio
+```
+
+---
+
+## Seed (datos iniciales)
+
+El seed (`prisma/seed.ts`) se ejecuta con:
+
+```bash
+yarn db:seed
+```
+
+Crea o actualiza:
+
+- **Usuarios:** administrador y dos usuarios de prueba (emails y contraseñas en la sección [Usuarios de prueba](#6-usuarios-de-prueba-tras-ejecutar-el-seed)).
+- **Productos:** lista de calzado de ejemplo (precios en COP, imágenes Unsplash) y registros en **Inventario**. Si ya existen productos, solo actualiza imágenes donde falten.
+
+Configuración en `package.json`:
+
+```json
+"prisma": {
+  "seed": "ts-node -P prisma/tsconfig.json prisma/seed.ts"
+}
+```
+
+---
+
+## API – Endpoints principales
 
 Base URL: `http://localhost:3000`
 
-| Caso de uso | Método | Ruta | Auth | Descripción |
-|-------------|--------|------|------|-------------|
-| Registrarse | POST | `/api/auth/registro` | No | Body: `nombre`, `email`, `password` |
-| Iniciar sesión | POST | `/api/auth/login` | No | Body: `email`, `password` → devuelve `token` |
-| Ver catálogo | GET | `/api/productos` | No | Lista de productos |
-| Filtrar productos | GET | `/api/productos/filtrar` | No | Query: `nombre`, `talla`, `color`, `marca`, `minPrecio`, `maxPrecio` |
-| Detalle producto | GET | `/api/productos/:id` | No | Un producto por id |
-| Agregar al carrito | POST | `/api/carrito/agregar` | JWT | Body: `productoId`, `cantidad` |
-| Ver carrito | GET | `/api/carrito` | JWT | Carrito del usuario |
-| Realizar compra | POST | `/api/pedidos/checkout` | JWT | Body opcional: `metodoPago` |
-| Historial de pedidos | GET | `/api/pedidos/mis-pedidos` | JWT | Pedidos del usuario |
-| Ver pedido | GET | `/api/pedidos/:id` | JWT | Detalle (propietario o admin) |
-| Gestionar productos (admin) | GET/POST/PUT/DELETE | `/api/productos/admin*` | JWT + admin | CRUD productos |
-| Gestionar inventario (admin) | PATCH | `/api/productos/admin/:id/inventario` | JWT + admin | Body: `cantidad` |
-| Ver todos los pedidos (admin) | GET | `/api/pedidos/admin` | JWT + admin | Listado completo |
+### Auth
+
+| Método | Ruta | Auth | Descripción |
+|--------|------|------|-------------|
+| POST | `/api/auth/registro` | No | Body: `nombre`, `email`, `password` |
+| POST | `/api/auth/login` | No | Body: `email`, `password` → `token` |
+
+### Productos (público)
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET | `/api/productos` | Catálogo |
+| GET | `/api/productos/filtrar` | Query: `nombre`, `talla`, `color`, `marca`, `minPrecio`, `maxPrecio` |
+| GET | `/api/productos/:id` | Detalle producto |
+
+### Carrito (JWT)
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET | `/api/carrito` | Carrito del usuario |
+| POST | `/api/carrito/agregar` | Body: `productoId`, `cantidad` |
+| PUT | `/api/carrito/item/:productoId` | Actualizar cantidad; Body: `cantidad` |
+| DELETE | `/api/carrito/item/:productoId` | Quitar ítem |
+
+### Pedidos (JWT)
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| POST | `/api/pedidos/checkout` | Checkout simulado (body opcional: `metodoPago`) |
+| POST | `/api/pedidos/create-preference` | **Checkout Pro:** crea pedido + preferencia MP; devuelve `{ pedidoId, initPoint }` |
+| GET | `/api/pedidos/mercadopago-webhook` | Webhook MP: `?topic=payment&id=payment_id` (sin JWT) |
+| GET | `/api/pedidos/mis-pedidos` | Historial del usuario |
+| GET | `/api/pedidos/:id` | Detalle pedido (propietario o admin) |
+| GET | `/api/pedidos/admin` | Todos los pedidos (admin) |
+
+### Pagos
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET | `/api/pagos/detalle?payment_id=xxx` | Detalle de pago MP (para página failure) |
+
+### Productos admin (JWT + admin)
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET | `/api/productos/admin/listar` | Listado completo |
+| POST | `/api/productos/admin` | Crear producto |
+| PUT | `/api/productos/admin/:id` | Actualizar producto |
+| DELETE | `/api/productos/admin/:id` | Eliminar producto |
+| PATCH | `/api/productos/admin/:id/inventario` | Body: `cantidad` |
 
 Rutas protegidas: cabecera `Authorization: Bearer <token>`.
 
-## Scripts disponibles
+---
 
-| Script | Descripción |
-|--------|-------------|
-| `yarn start:dev` | Desarrollo con watch (incluye `prisma generate`). |
-| `yarn start` | Inicia la app (incluye `prisma generate`). |
-| `yarn start:prod` | Ejecuta el build de producción. |
-| `yarn build` | Genera cliente Prisma y compila Nest. |
-| `yarn db:migrate` | Migraciones en modo desarrollo. |
-| `yarn db:studio` | Abre Prisma Studio. |
-| `yarn db:push` | Push del schema a la DB (sin migraciones). |
-| `yarn test` | Tests unitarios. |
-| `yarn test:e2e` | Tests e2e. |
-| `yarn lint` | Linter. |
-| `yarn format` | Formato con Prettier. |
+## Despliegue (poca memoria, p. ej. Render 512 MB)
 
-## Tests
+Para planes con **512 MB RAM** usa el script de bajo consumo y no ejecutes `nest start` en producción. Detalle en **[docs/RENDER.md](docs/RENDER.md)**.
 
-```bash
-# Unitarios
-yarn test
+Resumen:
 
-# E2E
-yarn test:e2e
+- **Start Command:** `yarn start:prod:low-memory`
+- **Build:** compilar en el paso de build y en start solo ejecutar `node dist/main.js` con `--max-old-space-size=384`.
 
-# Cobertura
-yarn test:cov
-```
+---
+
+## Modelo de datos (Prisma)
+
+Entidades: **Usuario**, **Carrito**, **CarritoItem**, **Producto**, **Inventario**, **Pedido**, **PedidoItem**, **Pago**. Relaciones y tablas en `prisma/schema.prisma` y en las migraciones bajo `prisma/migrations/`.
+
+---
 
 ## Licencia
 
-Proyecto de uso educativo. NestJS está bajo [licencia MIT](https://github.com/nestjs/nest/blob/master/LICENSE).
+Proyecto de uso educativo. NestJS bajo [licencia MIT](https://github.com/nestjs/nest/blob/master/LICENSE).
