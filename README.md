@@ -70,6 +70,20 @@ El backend está dividido por **módulos por funcionalidad** (auth, productos, c
 
 Esta organización modular facilita localizar dónde está cada caso de uso (auth en auth, carrito en carrito, checkout en pedidos), favorece el mantenimiento y permite crecer o refactorizar un módulo con menor impacto en el resto. No se ha aplicado arquitectura hexagonal (puertos/adaptadores) ni Clean Architecture (dominio aislado, casos de uso explícitos) de forma estricta; el objetivo ha sido un equilibrio entre claridad, mantenibilidad y simplicidad adecuado al alcance del proyecto.
 
+### Patrones de diseño utilizados
+
+| Patrón | Dónde se usa | Para qué sirve |
+|--------|----------------|----------------|
+| **Arquitectura en capas** | Controladores → Servicios → Prisma / integraciones | Separar entrada HTTP, lógica de negocio y persistencia/APIs externas. |
+| **Módulo (por funcionalidad)** | `AuthModule`, `ProductosModule`, `PedidosModule`, etc. | Agrupar controlador, servicios y dependencias por dominio; exponer solo lo necesario. |
+| **Inyección de dependencias (DI)** | `@Injectable()`, constructor con `PrismaService`, `JwtService`, `MercadoPagoService` | Nest resuelve las dependencias; facilita tests y sustitución de implementaciones. |
+| **Capa de servicios (Service Layer)** | `AuthService`, `PedidosService`, `ProductosService`, `MercadoPagoService` | Concentrar la lógica de negocio y orquestar acceso a datos e integraciones. |
+| **Strategy** | `JwtStrategy` (Passport) | Definir cómo se valida el JWT y se obtiene el usuario en cada petición autenticada. |
+| **Guard (cadena de responsabilidad)** | `JwtAuthGuard`, `RolesGuard` | Proteger rutas: primero validar JWT, luego comprobar rol (ej. `@Roles('admin')`). |
+| **Decorator (metadatos)** | `@Roles('admin')` con `SetMetadata` | Marcar controladores/métodos con requisitos (roles) que el `RolesGuard` lee con `Reflector`. |
+| **Adapter / Wrapper de servicio externo** | `MercadoPagoService`, `StoreService` | Encapsular el SDK de Mercado Pago y la persistencia en memoria; el resto del código no depende del detalle. |
+| **Singleton (por módulo)** | Servicios y guards registrados en módulos | Una única instancia por servicio en la app; Nest lo gestiona con su contenedor de DI. |
+
 ---
 
 ## Requisitos previos
