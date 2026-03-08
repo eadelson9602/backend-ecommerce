@@ -3,6 +3,9 @@
   "collection": "@nestjs/schematics",
   "sourceRoot": "src",
   "compilerOptions": {
-    "deleteOutDir": true
+    "deleteOutDir": true,
+    "builder": "swc",
+    "watchAssets": true,
+    "assets": ["**/*.json", "**/*.hbs", "**/*.html"]
   }
 }
