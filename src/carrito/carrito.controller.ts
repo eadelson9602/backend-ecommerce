@@ -1,8 +1,17 @@
-import { BadRequestException, Body, Controller, Get, Patch, Param, Post, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Patch,
+  Param,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { CarritoService } from './carrito.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/user.decorator';
-import { Usuario } from '../store/store.service';
+import type { Usuario } from '../store/store.service';
 
 @Controller('api/carrito')
 @UseGuards(JwtAuthGuard)
@@ -16,8 +25,13 @@ export class CarritoController {
     @Body('productoId') productoId: number,
     @Body('cantidad') cantidad: number = 1,
   ) {
-    if (!productoId) throw new BadRequestException('productoId es obligatorio.');
-    return this.carritoService.agregar(user, Number(productoId), Number(cantidad));
+    if (!productoId)
+      throw new BadRequestException('productoId es obligatorio.');
+    return this.carritoService.agregar(
+      user,
+      Number(productoId),
+      Number(cantidad),
+    );
   }
 
   @Get()
@@ -31,6 +45,10 @@ export class CarritoController {
     @Param('productoId') productoId: string,
     @Body('cantidad') cantidad: number,
   ) {
-    return this.carritoService.actualizarItem(user, Number(productoId), Number(cantidad));
+    return this.carritoService.actualizarItem(
+      user,
+      Number(productoId),
+      Number(cantidad),
+    );
   }
 }

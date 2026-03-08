@@ -1,13 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 
-/** Clase para uso en decoradores (emitDecoratorMetadata); el store sigue usando objetos planos. */
-export class Usuario {
-  id!: number;
-  nombre!: string;
-  email!: string;
-  passwordHash!: string;
-  rol!: 'usuario' | 'admin';
+/** Usuario (session/request no incluye passwordHash) */
+export interface Usuario {
+  id: number;
+  nombre: string;
+  email: string;
+  passwordHash?: string;
+  rol: 'usuario' | 'admin';
 }
 
 export interface Producto {
@@ -35,6 +35,7 @@ export interface Pedido {
   usuarioId: number;
   total: number;
   estado: string;
+  createdAt?: string; // ISO date from DB
   items: { productoId: number; cantidad: number; precio: number }[];
 }
 

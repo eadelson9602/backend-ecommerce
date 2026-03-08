@@ -1,9 +1,27 @@
-import { BadRequestException, Body, Controller, Post } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { RolesGuard } from './guards/roles.guard';
+import { Roles } from './decorators/roles.decorator';
 
 @Controller('api/auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
+
+  /** Listar usuarios (solo admin) */
+  @Get('usuarios')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  async getUsuarios() {
+    return this.authService.getAllUsuarios();
+  }
 
   /** UC1 - Registrarse */
   @Post('registro')
@@ -21,7 +39,10 @@ export class AuthController {
 
   /** UC2 - Iniciar sesión */
   @Post('login')
-  async login(@Body('email') email: string, @Body('password') password: string) {
+  async login(
+    @Body('email') email: string,
+    @Body('password') password: string,
+  ) {
     if (!email || !password) {
       throw new BadRequestException('Email y password requeridos.');
     }

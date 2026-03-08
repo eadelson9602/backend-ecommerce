@@ -83,6 +83,7 @@ model Pedido {
   usuarioId Int      @map("usuario_id")
   total     Decimal  @db.Decimal(10, 2)
   estado    String   // pendiente_pago | confirmado | pago_rechazado
+  createdAt DateTime @default(now()) @map("created_at")
 
   usuario Usuario     @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
   pago   Pago?

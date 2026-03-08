@@ -13,8 +13,30 @@ export interface ProductoResponse {
   imagenUrl?: string | null;
 }
 
+/** Forma del producto tal como viene de findMany con include: { inventario: true } */
+type ProductoWithInventario = {
+  id: number;
+  nombre: string;
+  precio: unknown;
+  talla: string;
+  color: string;
+  marca: string;
+  stock: number;
+  imagenUrl?: string | null;
+  inventario?: { cantidad: number } | null;
+};
+
 function toResponse(
-  p: { id: number; nombre: string; precio: unknown; talla: string; color: string; marca: string; stock: number; imagenUrl?: string | null },
+  p: {
+    id: number;
+    nombre: string;
+    precio: unknown;
+    talla: string;
+    color: string;
+    marca: string;
+    stock: number;
+    imagenUrl?: string | null;
+  },
   cantidad?: number,
 ): ProductoResponse {
   return {
@@ -41,9 +63,9 @@ export class ProductosService {
 
   /** UC3 - Ver catálogo desde base de datos */
   async getCatalogo(): Promise<ProductoResponse[]> {
-    const list = await this.db.producto.findMany({
+    const list = (await this.db.producto.findMany({
       include: { inventario: true },
-    });
+    })) as ProductoWithInventario[];
     return list.map((p) => toResponse(p, p.inventario?.cantidad ?? p.stock));
   }
 
@@ -56,20 +78,22 @@ export class ProductosService {
     minPrecio?: number;
     maxPrecio?: number;
   }): Promise<ProductoResponse[]> {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = {};
     if (filtros.nombre) {
       where.nombre = { contains: filtros.nombre, mode: 'insensitive' };
     }
     if (filtros.talla) where.talla = filtros.talla;
-    if (filtros.color) where.color = { equals: filtros.color, mode: 'insensitive' };
+    if (filtros.color)
+      where.color = { equals: filtros.color, mode: 'insensitive' };
     if (filtros.marca) {
       where.marca = { contains: filtros.marca, mode: 'insensitive' };
     }
     if (filtros.minPrecio != null || filtros.maxPrecio != null) {
       where.precio = {};
-      if (filtros.minPrecio != null) (where.precio as { gte?: number }).gte = filtros.minPrecio;
-      if (filtros.maxPrecio != null) (where.precio as { lte?: number }).lte = filtros.maxPrecio;
+      if (filtros.minPrecio != null)
+        (where.precio as { gte?: number }).gte = filtros.minPrecio;
+      if (filtros.maxPrecio != null)
+        (where.precio as { lte?: number }).lte = filtros.maxPrecio;
     }
 
     const list = await this.db.producto.findMany({
@@ -90,13 +114,21 @@ export class ProductosService {
     return toResponse(p, p.inventario?.cantidad ?? p.stock);
   }
 
-  /** UC8 - Admin: crear producto en base de datos */
-  async create(dto: { nombre: string; precio: number; talla?: string; color?: string; marca?: string; stock?: number; imagenUrl?: string | null }): Promise<ProductoResponse> {
+  /** UC8 - Admin: crear producto en base de datos (precio en COP, ej. 19900). */
+  async create(dto: {
+    nombre: string;
+    precio: number;
+    talla?: string;
+    color?: string;
+    marca?: string;
+    stock?: number;
+    imagenUrl?: string | null;
+  }): Promise<ProductoResponse> {
     const stock = Number(dto.stock) ?? 0;
     const producto = await this.db.producto.create({
       data: {
         nombre: dto.nombre,
-        precio: dto.precio,
+        precio: Number(dto.precio),
         talla: dto.talla ?? '',
         color: dto.color ?? '',
         marca: dto.marca ?? '',
@@ -111,16 +143,30 @@ export class ProductosService {
   }
 
   /** UC8 - Admin: actualizar producto */
-  async update(id: string, dto: Partial<{ nombre: string; precio: number; talla: string; color: string; marca: string; stock: number; imagenUrl?: string | null }>): Promise<ProductoResponse> {
+  async update(
+    id: string,
+    dto: Partial<{
+      nombre: string;
+      precio: number;
+      talla: string;
+      color: string;
+      marca: string;
+      stock: number;
+      imagenUrl?: string | null;
+    }>,
+  ): Promise<ProductoResponse> {
     const idNum = Number(id);
-    if (Number.isNaN(idNum)) throw new NotFoundException('Producto no encontrado.');
-    const existing = await this.db.producto.findUnique({ where: { id: idNum } });
+    if (Number.isNaN(idNum))
+      throw new NotFoundException('Producto no encontrado.');
+    const existing: unknown = await this.db.producto.findUnique({
+      where: { id: idNum },
+    });
     if (!existing) throw new NotFoundException('Producto no encontrado.');
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: any = {};
     if (dto.nombre != null) data.nombre = dto.nombre;
-    if (dto.precio != null) data.precio = dto.precio;
+    if (dto.precio != null) data.precio = Number(dto.precio);
     if (dto.talla != null) data.talla = dto.talla;
     if (dto.color != null) data.color = dto.color;
     if (dto.marca != null) data.marca = dto.marca;
@@ -144,17 +190,26 @@ export class ProductosService {
   /** UC8 - Admin: eliminar producto */
   async delete(id: string): Promise<void> {
     const idNum = Number(id);
-    if (Number.isNaN(idNum)) throw new NotFoundException('Producto no encontrado.');
-    const existing = await this.db.producto.findUnique({ where: { id: idNum } });
+    if (Number.isNaN(idNum))
+      throw new NotFoundException('Producto no encontrado.');
+    const existing: unknown = await this.db.producto.findUnique({
+      where: { id: idNum },
+    });
     if (!existing) throw new NotFoundException('Producto no encontrado.');
     await this.db.producto.delete({ where: { id: idNum } });
   }
 
   /** UC9 - Admin: actualizar inventario */
-  async updateInventario(id: string, cantidad: number): Promise<{ productoId: number; cantidad: number }> {
+  async updateInventario(
+    id: string,
+    cantidad: number,
+  ): Promise<{ productoId: number; cantidad: number }> {
     const idNum = Number(id);
-    if (Number.isNaN(idNum)) throw new NotFoundException('Producto no encontrado.');
-    const existing = await this.db.producto.findUnique({ where: { id: idNum } });
+    if (Number.isNaN(idNum))
+      throw new NotFoundException('Producto no encontrado.');
+    const existing: unknown = await this.db.producto.findUnique({
+      where: { id: idNum },
+    });
     if (!existing) throw new NotFoundException('Producto no encontrado.');
 
     await this.db.producto.update({

@@ -7,10 +7,8 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   private client: PrismaClient | null = null;
 
   get prisma(): PrismaClient {
-    if (!this.client) {
-      this.client = new PrismaClient();
-    }
-    return this.client;
+    const client = this.client ?? new PrismaClient();
+    return client as PrismaClient;
   }
 
   async onModuleInit(): Promise<void> {
