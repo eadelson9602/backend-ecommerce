@@ -1,4 +1,9 @@
-import { Injectable, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PagoService } from '../pago/pago.service';
 import { MercadoPagoService } from '../mercadopago/mercadopago.service';
@@ -39,13 +44,21 @@ export class PedidosService {
       throw new BadRequestException('Carrito vacío.');
 
     let total = 0;
-    const lineas: { productoId: number; cantidad: number; precio: number }[] = [];
-    const preferenceItems: { id: string; title: string; quantity: number; unit_price: number }[] = [];
+    const lineas: { productoId: number; cantidad: number; precio: number }[] =
+      [];
+    const preferenceItems: {
+      id: string;
+      title: string;
+      quantity: number;
+      unit_price: number;
+    }[] = [];
 
     for (const it of carrito.items) {
       const prod = await this.productosService.getById(String(it.productoId));
       if (!prod)
-        throw new BadRequestException(`Producto ${it.productoId} no encontrado.`);
+        throw new BadRequestException(
+          `Producto ${it.productoId} no encontrado.`,
+        );
       const disponible = prod.stock ?? prod.cantidad ?? 0;
       if (disponible < it.cantidad) {
         throw new BadRequestException(
@@ -95,7 +108,8 @@ export class PedidosService {
         process.env.MERCADOPAGO_PENDING_URL?.trim() ||
         `${baseUrl}/checkout/pending`,
     };
-    const notificationUrl = process.env.MERCADOPAGO_NOTIFICATION_URL?.trim() || undefined;
+    const notificationUrl =
+      process.env.MERCADOPAGO_NOTIFICATION_URL?.trim() || undefined;
 
     const { initPoint } = await this.mercadopagoService.createPreference({
       items: preferenceItems,
@@ -134,9 +148,13 @@ export class PedidosService {
       data: { estado: 'confirmado' },
     });
 
-    const carrito = await this.db.carrito.findUnique({ where: { usuarioId: pedido.usuarioId } });
+    const carrito = await this.db.carrito.findUnique({
+      where: { usuarioId: pedido.usuarioId },
+    });
     if (carrito) {
-      await this.db.carritoItem.deleteMany({ where: { carritoId: carrito.id } });
+      await this.db.carritoItem.deleteMany({
+        where: { carritoId: carrito.id },
+      });
     }
 
     for (const it of pedido.items) {
@@ -144,7 +162,10 @@ export class PedidosService {
         const prod = await this.productosService.getById(String(it.productoId));
         if (prod) {
           const nuevoStock = Math.max(0, (prod.stock ?? 0) - it.cantidad);
-          await this.productosService.updateInventario(String(it.productoId), nuevoStock);
+          await this.productosService.updateInventario(
+            String(it.productoId),
+            nuevoStock,
+          );
         }
       } catch {
         // ignorar error por producto ya eliminado
@@ -156,16 +177,23 @@ export class PedidosService {
   /** UC6 - Realizar compra (checkout) → incluye UC11 Procesar pago (simulado) */
   async checkout(user: Usuario, metodoPago: string = 'tarjeta') {
     const carrito = await this.getCarritoConItems(user.id);
-    if (!carrito || carrito.items.length === 0) throw new BadRequestException('Carrito vacío.');
+    if (!carrito || carrito.items.length === 0)
+      throw new BadRequestException('Carrito vacío.');
 
     let total = 0;
-    const lineas: { productoId: number; cantidad: number; precio: number }[] = [];
+    const lineas: { productoId: number; cantidad: number; precio: number }[] =
+      [];
     for (const it of carrito.items) {
       const prod = await this.productosService.getById(String(it.productoId));
-      if (!prod) throw new BadRequestException(`Producto ${it.productoId} no encontrado.`);
+      if (!prod)
+        throw new BadRequestException(
+          `Producto ${it.productoId} no encontrado.`,
+        );
       const disponible = prod.stock ?? prod.cantidad ?? 0;
       if (disponible < it.cantidad) {
-        throw new BadRequestException(`Stock insuficiente para producto ${it.productoId}.`);
+        throw new BadRequestException(
+          `Stock insuficiente para producto ${it.productoId}.`,
+        );
       }
       const precio = Number(prod.precio);
       total += precio * it.cantidad;
@@ -203,21 +231,31 @@ export class PedidosService {
     });
 
     if (!resultadoPago.aprobado) {
-      throw new BadRequestException({ error: 'Pago rechazado.', pedidoId: pedido.id });
+      throw new BadRequestException({
+        error: 'Pago rechazado.',
+        pedidoId: pedido.id,
+      });
     }
 
     for (const it of lineas) {
       const prod = await this.productosService.getById(String(it.productoId));
       if (prod) {
         const nuevoStock = Math.max(0, (prod.stock ?? 0) - it.cantidad);
-        await this.productosService.updateInventario(String(it.productoId), nuevoStock);
+        await this.productosService.updateInventario(
+          String(it.productoId),
+          nuevoStock,
+        );
       }
     }
     await this.db.carritoItem.deleteMany({ where: { carritoId: carrito.id } });
 
     return {
       message: 'Pedido confirmado.',
-      pedido: { id: pedido.id, total: Number(pedido.total), estado: pedido.estado },
+      pedido: {
+        id: pedido.id,
+        total: Number(pedido.total),
+        estado: pedido.estado,
+      },
     };
   }
 
@@ -242,7 +280,8 @@ export class PedidosService {
 
   async getById(id: string, user: Usuario): Promise<Pedido> {
     const idNum = Number(id);
-    if (Number.isNaN(idNum)) throw new NotFoundException('Pedido no encontrado.');
+    if (Number.isNaN(idNum))
+      throw new NotFoundException('Pedido no encontrado.');
     const pedido = await this.db.pedido.findUnique({
       where: { id: idNum },
       include: { items: true },
@@ -254,28 +293,36 @@ export class PedidosService {
     return this.toPedidoResponse(pedido);
   }
 
-  private toPedidoResponse(
-    p: {
-      id: number;
-      usuarioId: number;
-      total: { toNumber?: () => number } | number;
-      estado: string;
-      createdAt?: Date;
-      items: { productoId: number; cantidad: number; precio: { toNumber?: () => number } | number }[];
-    },
-  ): Pedido {
+  private toPedidoResponse(p: {
+    id: number;
+    usuarioId: number;
+    total: { toNumber?: () => number } | number;
+    estado: string;
+    createdAt?: Date;
+    items: {
+      productoId: number;
+      cantidad: number;
+      precio: { toNumber?: () => number } | number;
+    }[];
+  }): Pedido {
     return {
       id: p.id,
       usuarioId: p.usuarioId,
-      total: typeof p.total === 'object' && typeof p.total.toNumber === 'function' ? p.total.toNumber() : Number(p.total),
+      total:
+        typeof p.total === 'object' && typeof p.total.toNumber === 'function'
+          ? p.total.toNumber()
+          : Number(p.total),
       estado: p.estado,
       createdAt: p.createdAt ? p.createdAt.toISOString() : undefined,
       items: p.items.map((it) => ({
         productoId: it.productoId,
         cantidad: it.cantidad,
-        precio: typeof it.precio === 'object' && typeof (it.precio as { toNumber?: () => number }).toNumber === 'function'
-          ? (it.precio as { toNumber: () => number }).toNumber()
-          : Number(it.precio),
+        precio:
+          typeof it.precio === 'object' &&
+          typeof (it.precio as { toNumber?: () => number }).toNumber ===
+            'function'
+            ? (it.precio as { toNumber: () => number }).toNumber()
+            : Number(it.precio),
       })),
     };
   }
